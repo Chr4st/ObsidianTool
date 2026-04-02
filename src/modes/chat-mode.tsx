@@ -1,8 +1,13 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Box, Text, Newline } from 'ink';
-import type { ChatMessage, VerificationResult } from '../types.js';
+import type { ChatMessage } from '../types.js';
 import { MessageList } from '../components/message-list.js';
 import { PromptInput } from '../components/prompt-input.js';
+import { ClaudeClient } from '../services/claude-client.js';
+import { SocraticEngine } from '../services/socratic-engine.js';
+import { NoteGenerator } from '../services/note-generator.js';
+import { VaultWriter } from '../services/vault-writer.js';
+import { loadConfig, resolveVaultPath } from '../utils/config.js';
 
 type AppMode = 'chat' | 'editor' | 'review' | 'analyze' | 'status';
 
@@ -26,26 +31,6 @@ function createMessage(
   };
 }
 
-function mockAiResponse(userInput: string): Promise<VerificationResult> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({
-        claims: [
-          {
-            text: userInput,
-            verdict: 'correct',
-            explanation: 'Looks good!',
-            confidence: 0.9,
-          },
-        ],
-        followUpQuestion: 'Can you elaborate on that?',
-        masteryUpdate: null,
-        generatedNote: null,
-      });
-    }, 1000);
-  });
-}
-
 const HELP_TEXT = [
   'Available commands:',
   '  /help           - show this help text',
@@ -59,7 +44,7 @@ const HELP_TEXT = [
 ].join('\n');
 
 export function ChatMode({
-  vaultPath: _vaultPath,
+  vaultPath,
   domain,
   onModeChange,
   onQuit,
@@ -71,6 +56,35 @@ export function ChatMode({
   const [currentTopic, setCurrentTopic] = useState<string | null>(null);
   const [masteryScore, setMasteryScore] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [initError, setInitError] = useState<string | null>(null);
+
+  // Services refs — initialized once
+  const engineRef = useRef<SocraticEngine | null>(null);
+  const noteGenRef = useRef<NoteGenerator | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const config = await loadConfig();
+        const apiKey = config.anthropic_api_key || process.env.ANTHROPIC_API_KEY || '';
+        if (!apiKey) {
+          setInitError('No API key found. Set ANTHROPIC_API_KEY env var or add to ~/.study/config.json');
+          return;
+        }
+        const client = new ClaudeClient(apiKey);
+        engineRef.current = new SocraticEngine(
+          client,
+          config.mastery_threshold,
+          config.streak_threshold,
+        );
+        const resolvedVault = resolveVaultPath(vaultPath || config.vault_path);
+        const writer = new VaultWriter(resolvedVault);
+        noteGenRef.current = new NoteGenerator(writer);
+      } catch (err) {
+        setInitError(`Init failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    })();
+  }, [vaultPath]);
 
   const addMessage = useCallback(
     (msg: ChatMessage) => {
@@ -150,10 +164,22 @@ export function ChatMode({
       setIsProcessing(true);
 
       try {
-        const result = await mockAiResponse(input);
+        const engine = engineRef.current;
+        if (!engine) {
+          addMessage(createMessage('system', initError ?? 'Services not initialized. Check API key.'));
+          return;
+        }
+
+        // Start conversation if needed
+        if (!currentTopic) {
+          engine.startConversation(input.slice(0, 50), domain);
+          setCurrentTopic(input.slice(0, 50));
+        }
+
+        const turn = await engine.processMessage(input);
         const responseParts: string[] = [];
 
-        for (const claim of result.claims) {
+        for (const claim of turn.claims) {
           const badge =
             claim.verdict === 'correct'
               ? '\u2713'
@@ -163,27 +189,47 @@ export function ChatMode({
           responseParts.push(`${badge} ${claim.explanation}`);
         }
 
-        if (result.followUpQuestion) {
+        if (turn.followUp) {
           responseParts.push('');
-          responseParts.push(result.followUpQuestion);
+          responseParts.push(`\u2192 ${turn.followUp}`);
         }
 
         const assistantMsg = createMessage(
           'assistant',
           responseParts.join('\n'),
-          result.claims,
+          turn.claims,
         );
         addMessage(assistantMsg);
 
-        setStreak((prev) => prev + 1);
-        setMasteryScore((prev) => Math.min(100, prev + 5));
-      } catch {
-        addMessage(createMessage('system', 'Error: failed to get AI response.'));
+        setStreak(turn.streak);
+        setMasteryScore(Math.round(turn.currentScore * 100));
+
+        // Handle mastery reached
+        if (turn.masteryReached && noteGenRef.current) {
+          const summary = engine.getConversationSummary();
+          const correctClaims = summary.allClaims.filter((c: { verdict: string }) => c.verdict === 'correct');
+          const claimContent = correctClaims.map(c => `- ${c.text}`).join('\n');
+          const notePath = await noteGenRef.current.generateConceptNote(
+            currentTopic ?? input.slice(0, 50),
+            domain,
+            correctClaims,
+            `# ${currentTopic ?? input.slice(0, 50)}\n\n${claimContent}`,
+            [],
+          );
+          addMessage(createMessage('system', `\uD83C\uDFAF Mastery reached! Note saved: ${notePath}`));
+          engine.reset();
+          setCurrentTopic(null);
+          setStreak(0);
+          setMasteryScore(0);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        addMessage(createMessage('system', `Error: ${msg}`));
       } finally {
         setIsProcessing(false);
       }
     },
-    [handleSlashCommand, addMessage],
+    [handleSlashCommand, addMessage, currentTopic, domain, initError],
   );
 
   return (
