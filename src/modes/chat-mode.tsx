@@ -79,10 +79,15 @@ export function ChatMode({
           config.streak_threshold,
         );
         const resolvedVault = resolveVaultPath(vaultPath || config.vault_path);
+        const FORBIDDEN_PREFIXES = ['/etc', '/usr', '/bin', '/sbin', '/sys', '/proc', '/var/root'];
+        if (FORBIDDEN_PREFIXES.some(prefix => resolvedVault.startsWith(prefix))) {
+          setInitError(`Vault path "${resolvedVault}" points to a system directory.`);
+          return;
+        }
         const writer = new VaultWriter(resolvedVault);
         noteGenRef.current = new NoteGenerator(writer);
       } catch (err) {
-        setInitError(`Init failed: ${err instanceof Error ? err.message : String(err)}`);
+        setInitError('Initialization failed. Check your API key and ~/.study/config.json');
       }
     })();
   }, [vaultPath]);

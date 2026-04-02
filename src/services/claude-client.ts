@@ -354,8 +354,16 @@ Please generate a concept note for this topic based on the verified claims above
   async analyzeCodeArchitecture(
     fileContents: ReadonlyMap<string, string>,
   ): Promise<ArchitectureAnalysis> {
+    const MAX_FILES = 100;
+    const MAX_FILE_BYTES = 50_000;
+
     const fileDescriptions = Array.from(fileContents.entries())
-      .map(([path, content]) => `--- ${path} ---\n${content}`)
+      .slice(0, MAX_FILES)
+      .map(([filePath, content]) => {
+        const safePath = filePath.replace(/---/g, '—');
+        const safeContent = content.slice(0, MAX_FILE_BYTES);
+        return `--- ${safePath} ---\n${safeContent}`;
+      })
       .join('\n\n');
 
     const userPrompt = `Analyze the following codebase and return the architecture analysis as JSON.

@@ -28,7 +28,7 @@ export function getDatabase(): Database.Database {
     return database;
   }
 
-  mkdirSync(STUDY_DIR, { recursive: true });
+  mkdirSync(STUDY_DIR, { recursive: true, mode: 0o700 });
 
   const dbPath = getDatabasePath();
   const db = new Database(dbPath);

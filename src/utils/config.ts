@@ -63,11 +63,11 @@ async function fileExists(filePath: string): Promise<boolean> {
  */
 export async function saveConfig(config: StudyConfig): Promise<void> {
   const configDir = getConfigDir();
-  await mkdir(configDir, { recursive: true });
+  await mkdir(configDir, { recursive: true, mode: 0o700 });
 
   const configPath = getConfigPath();
   const json = JSON.stringify(config, null, 2);
-  await writeFile(configPath, json + '\n', 'utf-8');
+  await writeFile(configPath, json + '\n', { encoding: 'utf-8', mode: 0o600 });
 }
 
 /**
