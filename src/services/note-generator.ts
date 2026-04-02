@@ -51,7 +51,7 @@ export class NoteGenerator {
     const frontmatter = createConceptFrontmatter({ topic, domain, tags });
     const body = this.buildConceptBody(topic, verifiedClaims, aiContent);
     const content = generateFrontmatter(
-      frontmatter as unknown as Record<string, unknown>,
+      frontmatter,
       body,
     );
 
@@ -113,14 +113,16 @@ export class NoteGenerator {
       return basePath;
     }
 
-    let counter = 1;
-    while (true) {
+    const MAX_SUFFIX = 1000;
+    for (let counter = 1; counter <= MAX_SUFFIX; counter++) {
       const candidate = `${directory}/${slug}-${counter}.md`;
       if (!(await this.writer.noteExists(candidate))) {
         return candidate;
       }
-      counter += 1;
     }
+    throw new Error(
+      `Could not find available filename for "${slug}" after ${MAX_SUFFIX} attempts`,
+    );
   }
 
   /** Builds the markdown body for a concept note. */
@@ -184,7 +186,7 @@ export class NoteGenerator {
     ].join('\n');
 
     return generateFrontmatter(
-      fm as unknown as Record<string, unknown>,
+      fm,
       body,
     );
   }
@@ -225,7 +227,7 @@ export class NoteGenerator {
     ].join('\n');
 
     return generateFrontmatter(
-      fm as unknown as Record<string, unknown>,
+      fm,
       body,
     );
   }

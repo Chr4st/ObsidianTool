@@ -49,10 +49,6 @@ function generateId(): string {
   return `conv_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-function isCorrectish(verdict: ClaimVerdict): boolean {
-  return verdict === 'correct';
-}
-
 function countByVerdict(
   claims: readonly Claim[],
   verdict: ClaimVerdict,

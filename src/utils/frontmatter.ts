@@ -30,10 +30,10 @@ export function parseFrontmatter<T>(markdown: string): ParsedFrontmatter<T> {
  * string with YAML frontmatter delimiters.
  */
 export function generateFrontmatter(
-  frontmatterObj: Record<string, unknown>,
+  frontmatterObj: ConceptFrontmatter | CodeAnalysisFrontmatter | Record<string, unknown>,
   body: string,
 ): string {
-  return matter.stringify(body, frontmatterObj);
+  return matter.stringify(body, frontmatterObj as Record<string, unknown>);
 }
 
 // ─── Factory: ConceptFrontmatter ────────────────────────────────────────────

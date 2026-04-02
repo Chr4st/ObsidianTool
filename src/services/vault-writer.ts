@@ -5,27 +5,33 @@ import {
   access,
   readdir,
   unlink,
-  stat,
+  realpath,
 } from 'node:fs/promises';
 import path from 'node:path';
 
 // ─── Path Validation ────────────────────────────────────────────────────────
 
 /**
- * Ensures a relative path does not escape the vault root via `..` segments
- * or absolute path tricks.  Throws on violation.
+ * Ensures a relative path does not escape the vault root via `..` segments,
+ * absolute path tricks, or symlink escapes.  Throws on violation.
  */
 function assertSafePath(vaultRoot: string, relativePath: string): string {
-  // Reject absolute paths outright
   if (path.isAbsolute(relativePath)) {
     throw new Error(
       `Path must be relative to the vault root.  Got absolute path: ${relativePath}`,
     );
   }
 
+  // Reject paths containing `..` segments before resolution
+  const segments = relativePath.split(path.sep);
+  if (segments.includes('..')) {
+    throw new Error(
+      `Path must not contain ".." segments.  Got: ${relativePath}`,
+    );
+  }
+
   const resolved = path.resolve(vaultRoot, relativePath);
 
-  // After resolution the path must still live under the vault root
   if (!resolved.startsWith(vaultRoot + path.sep) && resolved !== vaultRoot) {
     throw new Error(
       `Path escapes the vault root.  Resolved "${resolved}" is outside "${vaultRoot}"`,
@@ -33,6 +39,24 @@ function assertSafePath(vaultRoot: string, relativePath: string): string {
   }
 
   return resolved;
+}
+
+/**
+ * Resolves the real path of an existing file and verifies it is still
+ * inside the vault root (catches symlink escapes).
+ */
+async function assertRealPathSafe(
+  vaultRoot: string,
+  absolutePath: string,
+): Promise<string> {
+  const real = await realpath(absolutePath);
+  const realVault = await realpath(vaultRoot).catch(() => vaultRoot);
+  if (!real.startsWith(realVault + path.sep) && real !== realVault) {
+    throw new Error(
+      `Symlink escapes vault root.  Real path "${real}" is outside "${realVault}"`,
+    );
+  }
+  return real;
 }
 
 // ─── VaultWriter ────────────────────────────────────────────────────────────
@@ -76,6 +100,7 @@ export class VaultWriter {
   async readNote(relativePath: string): Promise<string | null> {
     const absolute = assertSafePath(this.vaultRoot, relativePath);
     try {
+      await assertRealPathSafe(this.vaultRoot, absolute);
       return await readFile(absolute, 'utf-8');
     } catch {
       return null;

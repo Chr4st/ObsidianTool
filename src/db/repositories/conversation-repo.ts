@@ -205,11 +205,12 @@ export function addMessage(
 export function getMessages(
   db: Database.Database,
   conversationId: string,
+  limit = 500,
 ): readonly ConversationMessage[] {
   const stmt = db.prepare(
-    'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC',
+    'SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC LIMIT ?',
   );
-  const rows = stmt.all(conversationId) as MessageRow[];
+  const rows = stmt.all(conversationId, limit) as MessageRow[];
   return rows.map(rowToMessage);
 }
 

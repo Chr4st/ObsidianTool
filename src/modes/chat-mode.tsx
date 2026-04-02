@@ -54,6 +54,7 @@ export function ChatMode({
   ]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [currentTopic, setCurrentTopic] = useState<string | null>(null);
+  const topicRef = useRef<string | null>(null);
   const [masteryScore, setMasteryScore] = useState(0);
   const [streak, setStreak] = useState(0);
   const [initError, setInitError] = useState<string | null>(null);
@@ -170,10 +171,12 @@ export function ChatMode({
           return;
         }
 
-        // Start conversation if needed
-        if (!currentTopic) {
-          engine.startConversation(input.slice(0, 50), domain);
-          setCurrentTopic(input.slice(0, 50));
+        // Start conversation if needed (use ref to avoid React state race)
+        if (!topicRef.current) {
+          const topic = input.slice(0, 50);
+          topicRef.current = topic;
+          engine.startConversation(topic, domain);
+          setCurrentTopic(topic);
         }
 
         const turn = await engine.processMessage(input);
@@ -218,6 +221,7 @@ export function ChatMode({
           );
           addMessage(createMessage('system', `\uD83C\uDFAF Mastery reached! Note saved: ${notePath}`));
           engine.reset();
+          topicRef.current = null;
           setCurrentTopic(null);
           setStreak(0);
           setMasteryScore(0);

@@ -191,21 +191,20 @@ function buildConversationMessages(
   userMessage: string,
   vaultContext?: string,
 ): Anthropic.MessageParam[] {
-  const messages: Anthropic.MessageParam[] = history.map((entry) => ({
-    role: entry.role,
-    content: entry.content,
-  }));
-
   const contextPrefix = vaultContext
     ? `[Vault context: ${vaultContext}]\n\n`
     : '';
 
-  messages.push({
-    role: 'user',
-    content: `${contextPrefix}${userMessage}`,
-  });
-
-  return messages;
+  return [
+    ...history.map((entry) => ({
+      role: entry.role as 'user' | 'assistant',
+      content: entry.content,
+    })),
+    {
+      role: 'user' as const,
+      content: `${contextPrefix}${userMessage}`,
+    },
+  ];
 }
 
 // ─── Client ─────────────────────────────────────────────────────────────────
