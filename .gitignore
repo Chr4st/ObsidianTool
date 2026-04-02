@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.js.map
+.env
+.study/
+*.db
+*.db-journal
+*.db-wal
+.DS_Store
